@@ -1,0 +1,149 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import struct
+
+import roslib.message
+import rosgraph
+import rospy
+import rospy.msg
+
+# http://stackoverflow.com/questions/35038999/write-a-single-byte-to-a-file-in-python-3-x
+if sys.version_info.major >= 3:
+    as_byte = lambda value: bytes([value])
+else:
+    as_byte = chr
+
+# Reads a null-terminated string from stream and returns it
+def readString(f):
+    result = ''
+    while True:
+        c = f.read(1)
+        if len(c) == 0:
+            rospy.logerr("Error reading file; encountered end of file instead of NULL string terminator")
+            raise Exception()
+        if c[0] == '\0':
+            break
+        result += c[0]
+    return result
+
+class PersistentTopicsNode:
+    def __init__(self):
+        self.subscribers = dict()
+        self.publishers = dict()
+        self.topic_type_names = dict()
+        self.latched_messages = dict()
+
+        # Set up ROS master and get info
+        self.node_name = rospy.get_name()
+        self.master = rosgraph.Master(self.node_name)
+        pubs, subs, _ = self.master.getSystemState()
+        pubs = dict((kvp[0], kvp[1]) for kvp in pubs)
+        topic_type_names = self.master.getTopicTypes()
+        topic_type_names = dict((kvp[0], kvp[1]) for kvp in topic_type_names)
+
+        # Figure out what topics we're managing persistence for
+        if not rospy.has_param("~topics"):
+           raise Exception("persistent_topics_node requires local parameter 'topics'")
+        topics = rospy.get_param("~topics")
+
+        # Load up persistent content from file
+        if not rospy.has_param("~file_name"):
+           raise Exception("persistent_topics_node requires local parameter 'file_name'")
+        self.file_name = rospy.get_param("~file_name")
+        if os.path.isfile(self.file_name):
+            rospy.logdebug("Loading persisted messages from file at %s", self.file_name)
+            self.readFromFile()
+        else:
+            file_path = os.path.dirname(self.file_name)
+            if not os.path.exists(file_path) and len(file_path) > 0:
+                os.makedirs(file_path)
+
+        # Check the status of each topic we're persisting and add a subscriber for it
+        for topic in topics:
+            if not topic.startswith("/"):
+                topic = self.node_name + "/" + topic
+
+            if topic in pubs:
+                # Topic is already being published; awesome!
+                if topic in self.topic_type_names and self.topic_type_names[topic] != topic_type_names[topic]:
+                    rospy.logwarn("Persistent data for topic %s is type %s, but current type is %s.  Old data will be overwritten with current topic message.",
+                                  topic, self.topic_type_names[topic], topic_type_names[topic])
+                rospy.logdebug("Capturing %s messages on %s", self.topic_type_names[topic], topic)
+            else:
+                # Topic is not yet being published
+                if topic in self.topic_type_names:
+                    # We have a persisted message so we'll publish it
+                    publisher = self.getPublisher(topic)
+                    topic_type = roslib.message.get_message_class(self.topic_type_names[topic])
+                    msg = topic_type()
+                    msg.deserialize(self.latched_messages[topic])
+                    rospy.logdebug("Publishing initial %s message to %s", self.topic_type_names[topic], topic)
+                    publisher.publish(msg)
+                else:
+                    # We've never observed the contents of this topic before
+                    rospy.logdebug("Awaiting first message on %s", topic)
+
+            self.subscribers[topic] = rospy.Subscriber(topic, rospy.msg.AnyMsg,
+                                                   callback=self.onTopicMessageReceived,
+                                                   callback_args=topic)
+
+    def getPublisher(self, topic):
+        currentType = self.topic_type_names[topic]
+        publisherMissing = not topic in self.publishers
+        typeMismatch = False
+        if not publisherMissing:
+            typeMismatch = currentType != self.publishers[topic][1]
+
+        if publisherMissing or typeMismatch:
+            if typeMismatch:
+                rospy.logwarn("Recreating publisher due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' error below.",
+                              self.publishers[topic][1], currentType)
+                self.publishers[topic][0].unregister()
+            topic_type = roslib.message.get_message_class(currentType)
+            self.publishers[topic] = (rospy.Publisher(topic, topic_type, latch=True, queue_size=1), currentType)
+            rospy.logdebug("Publisher of " + currentType + " on " + topic + " has been created")
+        return self.publishers[topic][0]
+
+    def onTopicMessageReceived(self, msg, topic):
+        if msg._connection_header['callerid'] == self.node_name:
+            return # Ignore messages we sent
+
+        self.topic_type_names[topic] = msg._connection_header['type']
+        self.latched_messages[topic] = msg._buff
+
+        rospy.logdebug("%s message received on %s", self.topic_type_names[topic], topic)
+
+        self.writeToFile()
+
+        # Republish message to ensure it is latched (even when sender has latched the message, because the sender may exit making the message unavailable)
+        publisher = self.getPublisher(topic)
+        publisher.publish(msg)
+
+    def writeToFile(self):
+        with open(self.file_name, "w") as f:
+            for topic in self.latched_messages:
+                f.write(topic)
+                f.write(as_byte(0))
+                f.write(self.topic_type_names[topic])
+                f.write(as_byte(0))
+                content = self.latched_messages[topic]
+                f.write(struct.pack('I', len(content)))
+                f.write(content)
+        rospy.logdebug("Wrote to persistent file at " + self.file_name)
+
+    def readFromFile(self):
+        with open(self.file_name, "r") as f:
+            topic = readString(f)
+            self.topic_type_names[topic] = readString(f)
+            content_length = struct.unpack('I', f.read(4))[0]
+            self.latched_messages[topic] = f.read(content_length)
+            if len(self.latched_messages[topic]) != content_length:
+                rospy.logerr("Persistence file is corrupt; encountered end of file while reading content for topic %s from %s", topic, self.file_name)
+                raise Exception()
+
+if __name__ == "__main__":
+    rospy.init_node('persistent_topics_node')
+    node = PersistentTopicsNode()
+    rospy.spin()

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package>
+  <name>persistent_topics</name>
+  <version>0.0.1</version>
+  <description>Persists the contents of specific latched topics between roscore invocations</description>
+
+  <maintainer email="bpelletier@misorobotics.com">Benjamin Pelletier</maintainer>
+
+  <license>MIT</license>
+
+  <url type="repository">https://github.com/MisoRobotics/persistent_topics</url>
+
+  <author email="bpelletier@misorobotics.com">Benjamin Pelletier</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>rospy</build_depend>
+  <run_depend>rospy</run_depend>
+
+  <export>
+  </export>
+</package>
