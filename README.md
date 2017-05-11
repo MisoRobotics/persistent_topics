@@ -21,3 +21,8 @@ In a launch file, declare a persistent_topics node for each distinct file you wo
 * Changes in the message format of a message persisted to file will render the entire file unusable.
 * Deserialization is only performed once when publishing the persisted message for each topic.
 * Serialization is never performed; instead, persistent_topics uses the already-serialized form of the message from the ROS infrastructure.
+
+## Use cases
+There are some types of information that are infrequently produced by a tool (ROS node) rather than manually entering the data (for instance, calibration of a camera's position and orientation), but consumed often by other parts of the system.  This node allows that information to be written to and read from a particular topic without needing to worry about how the information is persisted.
+
+As a useful side effect, consumers can choose to be notified whenever their content of interest changes.
