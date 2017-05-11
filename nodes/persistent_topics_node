@@ -98,7 +98,7 @@ class PersistentTopicsNode:
 
         if publisherMissing or typeMismatch:
             if typeMismatch:
-                rospy.logwarn("Recreating publisher due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' error below.",
+                rospy.logwarn("Recreating publisher due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' warning below.",
                               self.publishers[topic][1], currentType)
                 self.publishers[topic][0].unregister()
             topic_type = roslib.message.get_message_class(currentType)
@@ -123,6 +123,7 @@ class PersistentTopicsNode:
 
     def writeToFile(self):
         with open(self.file_name, "w") as f:
+            f.write(struct.pack('I', len(self.latched_messages)))
             for topic in self.latched_messages:
                 f.write(topic)
                 f.write(as_byte(0))
@@ -135,13 +136,15 @@ class PersistentTopicsNode:
 
     def readFromFile(self):
         with open(self.file_name, "r") as f:
-            topic = readString(f)
-            self.topic_type_names[topic] = readString(f)
-            content_length = struct.unpack('I', f.read(4))[0]
-            self.latched_messages[topic] = f.read(content_length)
-            if len(self.latched_messages[topic]) != content_length:
-                rospy.logerr("Persistence file is corrupt; encountered end of file while reading content for topic %s from %s", topic, self.file_name)
-                raise Exception()
+            nTopics = struct.unpack('I', f.read(4))[0]
+            for i in range(nTopics):
+                topic = readString(f)
+                self.topic_type_names[topic] = readString(f)
+                content_length = struct.unpack('I', f.read(4))[0]
+                self.latched_messages[topic] = f.read(content_length)
+                if len(self.latched_messages[topic]) != content_length:
+                    rospy.logerr("Persistence file is corrupt; encountered end of file while reading content for topic %s from %s", topic, self.file_name)
+                    raise Exception()
 
 if __name__ == "__main__":
     rospy.init_node('persistent_topics_node')

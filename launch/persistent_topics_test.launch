@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 
 <launch>
-  <node name="persistent_topics" pkg="persistent_topics" type="persistent_topics_node" output="screen">
-      <rosparam param="topics">['/testtopic']</rosparam>
-      <param name="file_name" value="testtopic.ptb" />
+  <node name="an_odd_node_name" pkg="persistent_topics" type="persistent_topics_node" output="screen">
+      <rosparam param="topics">['/testtopic1', '/testtopic2', 'relative_topic']</rosparam>
+      <param name="file_name" value="testtopics.ptb" />
   </node>
     <!-- After this launch file is run, publish a message to /testtopic.  For instance, like this:
-            rostopic pub /testtopic std_msgs/String 'hello world'
+            rostopic pub /testtopic1 std_msgs/String 'hello world'
          Then, kill everything (including ROS master), then rerun this launch file.  Without publishing any new messages
          explicitly, verify that the previously-published message is still available:
-            rostopic echo /testtopic
+            rostopic echo /testtopic1
     -->
 </launch>
