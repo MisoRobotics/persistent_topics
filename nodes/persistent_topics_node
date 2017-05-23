@@ -65,12 +65,15 @@ class PersistentTopicsNode:
             if not topic.startswith("/"):
                 topic = self.node_name + "/" + topic
 
-            if topic in pubs:
+            if topic in pubs and topic != '/tf_static': #TODO: implement better logic for when to override already-published topics
                 # Topic is already being published; awesome!
                 if topic in self.topic_type_names and self.topic_type_names[topic] != topic_type_names[topic]:
                     rospy.logwarn("Persistent data for topic %s is type %s, but current type is %s.  Old data will be overwritten with current topic message.",
                                   topic, self.topic_type_names[topic], topic_type_names[topic])
-                rospy.logdebug("Capturing %s messages on %s", self.topic_type_names[topic], topic)
+                if topic in self.topic_type_names:
+                    rospy.logdebug("Capturing %s messages on %s", self.topic_type_names[topic], topic)
+                else:
+                    rospy.logdebug("Capturing any messages on %s", topic)
             else:
                 # Topic is not yet being published
                 if topic in self.topic_type_names:
