@@ -48,6 +48,14 @@ class PersistentTopicsNode:
            raise Exception("persistent_topics_node requires local parameter 'topics'")
         topics = rospy.get_param("~topics")
 
+        # See if we're reading from different topics than we're writing to
+        source_topics = topics
+        if rospy.has_param("~source_topics"):
+            alt_source_topics = rospy.get_param("~source_topics")
+            for i in range(len(alt_source_topics)):
+                if len(alt_source_topics[i]) > 0:
+                    source_topics[i] = alt_source_topics[i]
+
         # Load up persistent content from file
         if not rospy.has_param("~file_name"):
            raise Exception("persistent_topics_node requires local parameter 'file_name'")
@@ -61,34 +69,30 @@ class PersistentTopicsNode:
                 os.makedirs(file_path)
 
         # Check the status of each topic we're persisting and add a subscriber for it
-        for topic in topics:
+        for i in range(len(topics)):
+            topic = topics[i]
             if not topic.startswith("/"):
                 topic = self.node_name + "/" + topic
 
-            if topic in pubs and topic != '/tf_static': #TODO: implement better logic for when to override already-published topics
-                # Topic is already being published; awesome!
-                if topic in self.topic_type_names and self.topic_type_names[topic] != topic_type_names[topic]:
-                    rospy.logwarn("Persistent data for topic %s is type %s, but current type is %s.  Old data will be overwritten with current topic message.",
-                                  topic, self.topic_type_names[topic], topic_type_names[topic])
-                if topic in self.topic_type_names:
-                    rospy.logdebug("Capturing %s messages on %s", self.topic_type_names[topic], topic)
-                else:
-                    rospy.logdebug("Capturing any messages on %s", topic)
-            else:
-                # Topic is not yet being published
-                if topic in self.topic_type_names:
-                    # We have a persisted message so we'll publish it
+            # Publish our cached message for this topic if available
+            if topic in self.topic_type_names:
+                if topic in pubs:
+                    # Topic is already being published; just publish an instantaneous message (no latching)
                     publisher = self.getPublisher(topic)
-                    topic_type = roslib.message.get_message_class(self.topic_type_names[topic])
-                    msg = topic_type()
-                    msg.deserialize(self.latched_messages[topic])
-                    rospy.logdebug("Publishing initial %s message to %s", self.topic_type_names[topic], topic)
-                    publisher.publish(msg)
+                    publisher.impl.is_latch = False
                 else:
-                    # We've never observed the contents of this topic before
-                    rospy.logdebug("Awaiting first message on %s", topic)
+                    # Topic is not yet being published; publish a latched message to provide for future consumers
+                    publisher = self.getPublisher(topic)
+                    publisher.impl.is_latch = True
 
-            self.subscribers[topic] = rospy.Subscriber(topic, rospy.msg.AnyMsg,
+                topic_type = roslib.message.get_message_class(self.topic_type_names[topic])
+                msg = topic_type()
+                msg.deserialize(self.latched_messages[topic])
+                rospy.loginfo("Publishing initial %s %s message to %s", "latched" if publisher.impl.is_latch else "unlatched", self.topic_type_names[topic], topic)
+                publisher.publish(msg)
+
+            # Start listening for updates on the source topic (often the same topic)
+            self.subscribers[topic] = rospy.Subscriber(source_topics[i], rospy.msg.AnyMsg,
                                                    callback=self.onTopicMessageReceived,
                                                    callback_args=topic)
 
@@ -113,16 +117,46 @@ class PersistentTopicsNode:
         if msg._connection_header['callerid'] == self.node_name:
             return # Ignore messages we sent
 
-        self.topic_type_names[topic] = msg._connection_header['type']
-        self.latched_messages[topic] = msg._buff
+        newType = msg._connection_header['type']
+        newContent = msg._buff
+        newMessageLatched = msg._connection_header['latching']
 
-        rospy.logdebug("%s message received on %s", self.topic_type_names[topic], topic)
+        rospy.loginfo("%s %s message received on %s", "Latched" if newMessageLatched else "Unlatched", newType, topic)
 
-        self.writeToFile()
+        # See if this message has different content from what we have already cached
+        content_changed = False
+        if topic in self.topic_type_names:
+            if self.topic_type_names[topic] != newType:
+                content_changed = True
+        else:
+            content_changed = True
+        if topic in self.latched_messages:
+            if self.latched_messages[topic] != newContent:
+                content_changed = True
+        else:
+            content_changed = True
 
-        # Republish message to ensure it is latched (even when sender has latched the message, because the sender may exit making the message unavailable)
-        publisher = self.getPublisher(topic)
-        publisher.publish(msg)
+        # Cache any new content
+        if content_changed:
+            self.topic_type_names[topic] = newType
+            self.latched_messages[topic] = newContent
+            self.writeToFile()
+            rospy.loginfo("Saved new %s message from %s", newType, topic)
+        else:
+            rospy.loginfo("Not saving duplicate %s message from %s", newType, topic)
+
+        if not newMessageLatched:
+            # Republish non-latched message as latched message
+            publisher = self.getPublisher(topic)
+            publisher.publish(msg)
+            publisher.impl.is_latch = True
+            rospy.loginfo("Republished %s message on %s because publisher did not latch it" % (newType, topic))
+        else:
+            # Ensure that our publisher will not republish past messages.  Since this new message is latched, its
+            # publisher is claiming it is now the primary source of information in this topic.
+            if topic in self.publishers:
+                self.publishers[topic][0].impl.is_latch = False
+            rospy.loginfo("Disabling message latching for %s message on %s because publisher has latched it instead" % (newType, topic))
 
     def writeToFile(self):
         with open(self.file_name, "w") as f:

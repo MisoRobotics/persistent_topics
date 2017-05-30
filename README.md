@@ -14,9 +14,14 @@ In a launch file, declare a persistent_topics node for each distinct file you wo
 
 ```topics```: A list of strings, each containing a topic to persist with this node.  If a topic starts with /, it is treated as absolute and only that exact topic will match.  Otherwise, the topic is treated as relative and will be resolved as the /NODENAME/TOPIC.  This allows relative topics to treated as "subfolders" of the node instance, and the node instance's base name can be easily changed.
 
+```source_topics```: Optional.  If specified, a list of strings where each non-empty string specifies an alternate topic on which to listen for messages that may be republished on the corresponding topic in ```topics```.  Whenever a corresponding entry is not present, it is assumed to be the same as the entry in ```topics```.
+
 ## Details
-* The file is entirely rewritten every time a new message is received, so this package is not well-suited to high-frequency topics.
+* If a topic already has a publisher at the time this node starts up, this node will not latch the cached message it publishes.  Otherwise, it will latch the cached message it publishes.
+* If a new message on a monitored topic is latched, this node will NOT republish that message, and it will unlatch any message it had previously latched.  This is because it interprets the other publisher to be saying, "I am the primary source of this information now."
+* If a new message on a monitored topic is NOT latched, this not will republish and latch that message.  This is because it interprets the other publisher to be saying, "I'm not taking responsibility for making sure this information is persistently available."
 * Only the most recent message on a particular topic (regardless of publisher/origin) is retained.
+* The file is entirely rewritten every time a new message is received, so this package is not well-suited to high-frequency topics.
 * Changes in message type on a given topic are handled fine by this package, but are probably bad practice in general.
 * Changes in the message format of a message persisted to file will render the entire file unusable.
 * Deserialization is only performed once when publishing the persisted message for each topic.
@@ -26,3 +31,7 @@ In a launch file, declare a persistent_topics node for each distinct file you wo
 There are some types of information that are infrequently produced by a tool (ROS node) rather than manually entering the data (for instance, calibration of a camera's position and orientation), but consumed often by other parts of the system.  This node allows that information to be written to and read from a particular topic without needing to worry about how the information is persisted.
 
 As a useful side effect, consumers can choose to be notified whenever their content of interest changes.
+
+If a node follows the dynamic-parameters-via-topic pattern, simply including the topic of the dynamic parameters in this node's ```topics``` list will suffice to persist any changes in that information to file.
+
+To persist information on a combination topic (where multiple messages from multiple sources may need to be combined to form the current state of information on the topic, like /tf_static), specify a different ```source_topic``` and publish UNLATCHED messages to that topic to have them echoed on the output topic (e.g., /tf_static)
