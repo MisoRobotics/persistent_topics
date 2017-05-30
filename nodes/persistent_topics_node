@@ -49,12 +49,14 @@ class PersistentTopicsNode:
         topics = rospy.get_param("~topics")
 
         # See if we're reading from different topics than we're writing to
-        source_topics = topics
+        self.source_topics = dict()
+        for topic in topics:
+            self.source_topics[topic] = topic
         if rospy.has_param("~source_topics"):
             alt_source_topics = rospy.get_param("~source_topics")
-            for i in range(len(alt_source_topics)):
-                if len(alt_source_topics[i]) > 0:
-                    source_topics[i] = alt_source_topics[i]
+            for alt_source_topic in alt_source_topics:
+                if len(alt_source_topic) > 0:
+                    self.source_topics[topic] = alt_source_topic
 
         # Load up persistent content from file
         if not rospy.has_param("~file_name"):
@@ -69,8 +71,7 @@ class PersistentTopicsNode:
                 os.makedirs(file_path)
 
         # Check the status of each topic we're persisting and add a subscriber for it
-        for i in range(len(topics)):
-            topic = topics[i]
+        for topic in topics:
             if not topic.startswith("/"):
                 topic = self.node_name + "/" + topic
 
@@ -88,11 +89,11 @@ class PersistentTopicsNode:
                 topic_type = roslib.message.get_message_class(self.topic_type_names[topic])
                 msg = topic_type()
                 msg.deserialize(self.latched_messages[topic])
-                rospy.loginfo("Publishing initial %s %s message to %s", "latched" if publisher.impl.is_latch else "unlatched", self.topic_type_names[topic], topic)
+                rospy.logdebug("Publishing initial %s %s message to %s", "latched" if publisher.impl.is_latch else "unlatched", self.topic_type_names[topic], topic)
                 publisher.publish(msg)
 
             # Start listening for updates on the source topic (often the same topic)
-            self.subscribers[topic] = rospy.Subscriber(source_topics[i], rospy.msg.AnyMsg,
+            self.subscribers[topic] = rospy.Subscriber(self.source_topics[topic], rospy.msg.AnyMsg,
                                                    callback=self.onTopicMessageReceived,
                                                    callback_args=topic)
 
@@ -121,7 +122,7 @@ class PersistentTopicsNode:
         newContent = msg._buff
         newMessageLatched = msg._connection_header['latching']
 
-        rospy.loginfo("%s %s message received on %s", "Latched" if newMessageLatched else "Unlatched", newType, topic)
+        rospy.logdebug("%s %s message received on %s", "Latched" if newMessageLatched else "Unlatched", newType, topic)
 
         # See if this message has different content from what we have already cached
         content_changed = False
@@ -130,6 +131,7 @@ class PersistentTopicsNode:
                 content_changed = True
         else:
             content_changed = True
+        self.topic_type_names[topic] = newType
         if topic in self.latched_messages:
             if self.latched_messages[topic] != newContent:
                 content_changed = True
@@ -141,22 +143,29 @@ class PersistentTopicsNode:
             self.topic_type_names[topic] = newType
             self.latched_messages[topic] = newContent
             self.writeToFile()
-            rospy.loginfo("Saved new %s message from %s", newType, topic)
+            rospy.logdebug("Saved new %s message from %s", newType, topic)
+
+            if self.source_topics[topic] != topic:
+                # Echo message to source topic if different than target topic
+                self.topic_type_names[self.source_topics[topic]] = newType
+                publisher = self.getPublisher(topic)
+                publisher.publish(msg)
+                rospy.loginfo("Echoed latched %s message on %s" % (newType, self.source_topics[topic]))
         else:
-            rospy.loginfo("Not saving duplicate %s message from %s", newType, topic)
+            rospy.logdebug("Not saving duplicate %s message from %s", newType, topic)
 
         if not newMessageLatched:
             # Republish non-latched message as latched message
             publisher = self.getPublisher(topic)
             publisher.publish(msg)
             publisher.impl.is_latch = True
-            rospy.loginfo("Republished %s message on %s because publisher did not latch it" % (newType, topic))
+            rospy.logdebug("Republished %s message on %s because publisher did not latch it" % (newType, topic))
         else:
             # Ensure that our publisher will not republish past messages.  Since this new message is latched, its
             # publisher is claiming it is now the primary source of information in this topic.
             if topic in self.publishers:
                 self.publishers[topic][0].impl.is_latch = False
-            rospy.loginfo("Disabling message latching for %s message on %s because publisher has latched it instead" % (newType, topic))
+            rospy.logdebug("Disabling message latching for %s message on %s because publisher has latched it instead" % (newType, topic))
 
     def writeToFile(self):
         with open(self.file_name, "w") as f:
