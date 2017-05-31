@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+
+import os
+
+import roslib.message
+import rosgraph
+import rospy
+import rospy.msg
+
+from persistent_topics.persistent_topics_common import PersistentTopics
+
+class SingleChannelPersistentTopicsNode(PersistentTopics):
+    def __init__(self):
+        self.subscribers = dict()
+        self.publishers = dict()
+        self.topic_type_names = dict()
+        self.latched_messages = dict()
+
+        # Set up ROS master and get info
+        self.node_name = rospy.get_name()
+        self.master = rosgraph.Master(self.node_name)
+
+        # Figure out what topics we're managing persistence for
+        if not rospy.has_param("~topics"):
+           raise Exception("single_channel_persistent_topics_node requires local parameter 'topics'")
+        topics = rospy.get_param("~topics")
+        for i in range(len(topics)):
+            if not topics[i].startswith("/"):
+                topics[i] = self.node_name + "/" + topics[i]
+
+        # Load up persistent content from file
+        self.initFile()
+
+        # Check the status of each topic we're persisting and add a subscriber for it
+        for topic in topics:
+            # Publish our cached message on the main topic if available
+            if topic in self.topic_type_names:
+                topic_type_name = self.topic_type_names[topic]
+                topic_type = roslib.message.get_message_class(topic_type_name)
+                msg = topic_type()
+                msg.deserialize(self.latched_messages[topic])
+                publisher = self.getPublisher(topic)
+                rospy.loginfo("Publishing initial %s message to %s", topic_type_name, topic)
+                publisher.publish(msg)
+
+            # Start listening for updates on the topic
+            self.subscribers[topic] = rospy.Subscriber(topic, rospy.msg.AnyMsg,
+                                                   callback=self.onTopicMessageReceived,
+                                                   callback_args=topic)
+
+    def onTopicMessageReceived(self, msg, topic):
+        if msg._connection_header['callerid'] == self.node_name:
+            return # Ignore messages we sent
+
+        new_type = msg._connection_header['type']
+        new_content = msg._buff
+        new_message_latched = msg._connection_header['latching'] == '1'
+
+        rospy.loginfo("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, topic, msg._connection_header['callerid'])
+
+        # See if this message has different content from what we have already cached
+        content_changed = False
+        if topic in self.topic_type_names:
+            if self.topic_type_names[topic] != new_type:
+                content_changed = True
+        else:
+            content_changed = True
+        self.topic_type_names[topic] = new_type
+        if topic in self.latched_messages:
+            if self.latched_messages[topic] != new_content:
+                content_changed = True
+        else:
+            content_changed = True
+
+        # Cache any new content
+        if content_changed:
+            self.topic_type_names[topic] = new_type
+            self.latched_messages[topic] = new_content
+            self.writeToFile()
+            rospy.loginfo("Saved new %s message from %s", new_type, topic)
+        else:
+            rospy.loginfo("Not saving duplicate %s message from %s", new_type, topic)
+
+        publisher = self.getPublisher(topic)
+        if not new_message_latched:
+            # Republish non-latched message as latched message
+            publisher.impl.is_latch = True
+            publisher.publish(msg)
+            rospy.loginfo("Republished %s message on %s because publisher did not latch it" % (new_type, topic))
+        else:
+            # Unlatch previous message as new publisher is taking responsibility for providi
+            publisher.impl.is_latch = False
+            rospy.loginfo("Unlatched persistence republisher message")
+
+if __name__ == "__main__":
+    rospy.init_node('single_channel_persistent_topics_node')
+    node = SingleChannelPersistentTopicsNode()
+    rospy.spin()
