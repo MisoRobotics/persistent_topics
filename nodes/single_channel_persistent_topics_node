@@ -56,7 +56,7 @@ class SingleChannelPersistentTopicsNode(PersistentTopics):
         new_content = msg._buff
         new_message_latched = msg._connection_header['latching'] == '1'
 
-        rospy.loginfo("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, topic, msg._connection_header['callerid'])
+        rospy.logdebug("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, topic, msg._connection_header['callerid'])
 
         # See if this message has different content from what we have already cached
         content_changed = False
@@ -77,20 +77,20 @@ class SingleChannelPersistentTopicsNode(PersistentTopics):
             self.topic_type_names[topic] = new_type
             self.latched_messages[topic] = new_content
             self.writeToFile()
-            rospy.loginfo("Saved new %s message from %s", new_type, topic)
+            rospy.logdebug("Saved new %s message from %s", new_type, topic)
         else:
-            rospy.loginfo("Not saving duplicate %s message from %s", new_type, topic)
+            rospy.logdebug("Not saving duplicate %s message from %s", new_type, topic)
 
         publisher = self.getPublisher(topic)
         if not new_message_latched:
             # Republish non-latched message as latched message
             publisher.impl.is_latch = True
             publisher.publish(msg)
-            rospy.loginfo("Republished %s message on %s because publisher did not latch it" % (new_type, topic))
+            rospy.logdebug("Republished %s message on %s because publisher did not latch it" % (new_type, topic))
         else:
             # Unlatch previous message as new publisher is taking responsibility for providi
             publisher.impl.is_latch = False
-            rospy.loginfo("Unlatched persistence republisher message")
+            rospy.logdebug("Unlatched persistence republisher message")
 
 if __name__ == "__main__":
     rospy.init_node('single_channel_persistent_topics_node')

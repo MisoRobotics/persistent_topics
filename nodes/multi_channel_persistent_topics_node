@@ -66,7 +66,7 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
                 publisher.publish(msg)
 
                 publisher = self.getPublisher(source_topic)
-                rospy.loginfo("Echoing initial %s message to %s", topic_type_name, source_topic)
+                rospy.logdebug("Echoing initial %s message to %s", topic_type_name, source_topic)
                 publisher.publish(msg)
 
             # Start listening for updates on the source topic
@@ -82,7 +82,7 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
         new_content = msg._buff
         new_message_latched = msg._connection_header['latching'] == '1'
 
-        rospy.loginfo("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, source_topic, msg._connection_header['callerid'])
+        rospy.logdebug("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, source_topic, msg._connection_header['callerid'])
 
         main_topic = None
         for i in range(len(self.source_topics)):
@@ -113,20 +113,20 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
             self.topic_type_names[main_topic] = new_type
             self.latched_messages[source_topic] = new_content
             self.writeToFile()
-            rospy.loginfo("Saved new %s message from %s", new_type, source_topic)
+            rospy.logdebug("Saved new %s message from %s", new_type, source_topic)
         else:
-            rospy.loginfo("Not saving duplicate %s message from %s", new_type, source_topic)
+            rospy.logdebug("Not saving duplicate %s message from %s", new_type, source_topic)
 
         # Republish message on main topic
         publisher = self.getPublisher(main_topic)
         publisher.publish(msg)
-        rospy.loginfo("Republished %s message from %s on %s" % (new_type, source_topic, main_topic))
+        rospy.logdebug("Republished %s message from %s on %s" % (new_type, source_topic, main_topic))
 
         if not new_message_latched:
             # Latch message on source topic if other publisher isn't taking responsibility for it
             publisher = self.getPublisher(source_topic)
             publisher.publish(msg)
-            rospy.loginfo("Latched %s message to %s" % (new_type, source_topic))
+            rospy.logdebug("Latched %s message to %s" % (new_type, source_topic))
 
 if __name__ == "__main__":
     rospy.init_node('multi_channel_persistent_topics_node')

@@ -34,10 +34,10 @@ class PersistentTopics:
         self.file_name = rospy.get_param("~file_name")
 
         if os.path.isfile(self.file_name):
-            rospy.loginfo("Loading persisted messages from file at %s", self.file_name)
+            rospy.logdebug("Loading persisted messages from file at %s", self.file_name)
             self.readFromFile()
         else:
-            rospy.loginfo("Created new persistence file at %s", self.file_name)
+            rospy.logdebug("Created new persistence file at %s", self.file_name)
             file_path = os.path.dirname(self.file_name)
             if not os.path.exists(file_path) and len(file_path) > 0:
                 os.makedirs(file_path)
