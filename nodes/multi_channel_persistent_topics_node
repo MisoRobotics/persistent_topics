@@ -8,11 +8,13 @@ import rospy
 import rospy.msg
 
 from persistent_topics.persistent_topics_common import PersistentTopics
+from persistent_topics.persistent_topics_common import LatchPublisher
 
 class MultiChannelPersistentTopicsNode(PersistentTopics):
     def __init__(self):
         self.subscribers = dict()
         self.publishers = dict()
+        self.main_topics = dict()
         self.topic_type_names = dict()
         self.latched_messages = dict()
 
@@ -20,59 +22,74 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
         self.node_name = rospy.get_name()
         self.master = rosgraph.Master(self.node_name)
 
-        # Figure out what topics we're outputting to
-        self.main_topics = []
-        if not rospy.has_param("~main_topics"):
-           raise Exception("multi_channel_persistent_topics_node requires local parameter 'main_topics'")
-        topics = rospy.get_param("~main_topics")
-        for topic in topics:
-            if not topic.startswith("/"):
-                topic = self.node_name + "/" + topic
-            self.main_topics.append(topic)
-
         # Figure out what topics we're receiving updates from
-        self.source_topics = []
+        source_topics = []
         if not rospy.has_param("~source_topics"):
            raise Exception("multi_channel_persistent_topics_node requires local parameter 'source_topics'")
         topics = rospy.get_param("~source_topics")
         for topic in topics:
             if not topic.startswith("/"):
                 topic = self.node_name + "/" + topic
-            self.source_topics.append(topic)
+            source_topics.append(topic)
 
-        if len(self.source_topics) != len(self.main_topics):
+        # Figure out what topics we're outputting to
+        main_topics = []
+        if not rospy.has_param("~main_topics"):
+           raise Exception("multi_channel_persistent_topics_node requires local parameter 'main_topics'")
+        topics = rospy.get_param("~main_topics")
+        for topic in topics:
+            if not topic.startswith("/"):
+                topic = self.node_name + "/" + topic
+            main_topics.append(topic)
+
+        if len(source_topics) != len(main_topics):
             raise Exception("Parameters 'source_topics' and 'output_topics' must be lists of the same length")
+
+        for i in range(len(source_topics)):
+            self.main_topics[source_topics[i]] = main_topics[i]
 
         # Load up persistent content from file
         self.initFile()
 
-        # Type names for publishing in main topics are the same as for listening to source topics
-        for i in range(len(self.source_topics)):
-            if self.source_topics[i] in self.topic_type_names:
-                self.topic_type_names[self.main_topics[i]] = self.topic_type_names[self.source_topics[i]]
-
-        for i in range(len(self.source_topics)):
-            source_topic = self.source_topics[i]
-
-            # Publish our cached message on the main topic and source topic if available
+        # Start up management for each topic pair
+        for source_topic in source_topics:
+            # If available, publish our cached message on the main topic and source topic
             if source_topic in self.topic_type_names:
                 topic_type_name = self.topic_type_names[source_topic]
                 topic_type = roslib.message.get_message_class(topic_type_name)
                 msg = topic_type()
                 msg.deserialize(self.latched_messages[source_topic])
 
-                publisher = self.getPublisher(self.main_topics[i])
-                rospy.loginfo("Publishing initial %s message to %s", topic_type_name, self.main_topics[i])
-                publisher.publish(msg)
-
-                publisher = self.getPublisher(source_topic)
+                main_publisher, source_publisher = self.getPublishers(source_topic)
+                rospy.loginfo("Publishing initial %s message from %s to %s", topic_type_name, source_topic, self.main_topics[source_topic])
+                main_publisher.publish(msg)
                 rospy.logdebug("Echoing initial %s message to %s", topic_type_name, source_topic)
-                publisher.publish(msg)
+                source_publisher.publish(msg)
 
             # Start listening for updates on the source topic
-            self.subscribers[topic] = rospy.Subscriber(source_topic, rospy.msg.AnyMsg,
+            self.subscribers[source_topic] = rospy.Subscriber(source_topic, rospy.msg.AnyMsg,
                                                    callback=self.onTopicMessageReceived,
-                                                   callback_args=topic)
+                                                   callback_args=source_topic)
+
+    def getPublishers(self, source_topic):
+        currentType = self.topic_type_names[source_topic]
+        publisherMissing = not source_topic in self.publishers
+        typeMismatch = False
+        if not publisherMissing:
+            typeMismatch = currentType != self.publishers[source_topic][0]
+
+        if publisherMissing or typeMismatch:
+            if typeMismatch:
+                rospy.logwarn("Recreating publishers for %s due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' warning below.",
+                              source_topic, self.main_publishers[source_topic][0], currentType)
+                self.publishers[source_topic][1].unregister()
+                self.publishers[source_topic][2].unregister()
+            topic_type = roslib.message.get_message_class(currentType)
+            self.publishers[source_topic] = (currentType,
+                                             LatchPublisher(source_topic, topic_type, queue_size=1),
+                                             LatchPublisher(self.main_topics[source_topic], topic_type, queue_size=100))
+            rospy.logdebug("Publishers of %s on %s and %s have been created" % (currentType, source_topic, self.main_topics[source_topic]))
+        return self.publishers[source_topic][1], self.publishers[source_topic][2]
 
     def onTopicMessageReceived(self, msg, source_topic):
         if msg._connection_header['callerid'] == self.node_name:
@@ -83,15 +100,6 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
         new_message_latched = msg._connection_header['latching'] == '1'
 
         rospy.logdebug("%s %s message received on %s from %s", "Latched" if new_message_latched else "Unlatched", new_type, source_topic, msg._connection_header['callerid'])
-
-        main_topic = None
-        for i in range(len(self.source_topics)):
-            if self.source_topics[i] == source_topic:
-                main_topic = self.main_topics[i]
-                break
-        if main_topic is None:
-            rospy.logerr("Message received on topic %s, but multi_channel_persistent_topics_node was not supposed to be listening on this channel" % source_topic)
-            return
 
         # See if this message has different content from what we have already cached
         content_changed = False
@@ -110,7 +118,6 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
         if content_changed:
             # Cache any new content
             self.topic_type_names[source_topic] = new_type
-            self.topic_type_names[main_topic] = new_type
             self.latched_messages[source_topic] = new_content
             self.writeToFile()
             rospy.logdebug("Saved new %s message from %s", new_type, source_topic)
@@ -118,14 +125,13 @@ class MultiChannelPersistentTopicsNode(PersistentTopics):
             rospy.logdebug("Not saving duplicate %s message from %s", new_type, source_topic)
 
         # Republish message on main topic
-        publisher = self.getPublisher(main_topic)
-        publisher.publish(msg)
-        rospy.logdebug("Republished %s message from %s on %s" % (new_type, source_topic, main_topic))
+        source_publisher, main_publisher = self.getPublishers(source_topic)
+        main_publisher.publish(msg)
+        rospy.logdebug("Republished %s message from %s on %s" % (new_type, source_topic, self.main_topics[source_topic]))
 
         if not new_message_latched:
             # Latch message on source topic if other publisher isn't taking responsibility for it
-            publisher = self.getPublisher(source_topic)
-            publisher.publish(msg)
+            source_publisher.publish(msg)
             rospy.logdebug("Latched %s message to %s" % (new_type, source_topic))
 
 if __name__ == "__main__":

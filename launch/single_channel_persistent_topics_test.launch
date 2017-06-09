@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 
 <launch>
-  <node name="an_odd_node_name" pkg="persistent_topics" type="persistent_topics_node" output="screen">
+  <node name="an_odd_node_name" pkg="persistent_topics" type="single_channel_persistent_topics_node" output="screen">
       <rosparam param="topics">['/testtopic1', '/testtopic2', 'relative_topic']</rosparam>
       <param name="file_name" value="testtopics.ptb" />
   </node>

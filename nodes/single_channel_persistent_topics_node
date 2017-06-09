@@ -48,6 +48,23 @@ class SingleChannelPersistentTopicsNode(PersistentTopics):
                                                    callback=self.onTopicMessageReceived,
                                                    callback_args=topic)
 
+    def getPublisher(self, topic):
+        currentType = self.topic_type_names[topic]
+        publisherMissing = not topic in self.publishers
+        typeMismatch = False
+        if not publisherMissing:
+            typeMismatch = currentType != self.publishers[topic][1]
+
+        if publisherMissing or typeMismatch:
+            if typeMismatch:
+                rospy.logwarn("Recreating publisher due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' warning below.",
+                              self.publishers[topic][1], currentType)
+                self.publishers[topic][0].unregister()
+            topic_type = roslib.message.get_message_class(currentType)
+            self.publishers[topic] = (rospy.Publisher(topic, topic_type, latch=True, queue_size=100), currentType)
+            rospy.logdebug("Publisher of " + currentType + " on " + topic + " has been created")
+        return self.publishers[topic][0]
+
     def onTopicMessageReceived(self, msg, topic):
         if msg._connection_header['callerid'] == self.node_name:
             return # Ignore messages we sent

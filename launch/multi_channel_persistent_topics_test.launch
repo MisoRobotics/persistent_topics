@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+
+<launch>
+  <node name="an_odd_node_name" pkg="persistent_topics" type="multi_channel_persistent_topics_node" output="screen">
+      <rosparam param="main_topics">  ['/output_topic', '/output_topic']</rosparam>
+      <rosparam param="source_topics">['/topic1',       '/topic2']</rosparam>
+      <param name="file_name" value="test_multichannel_topics.ptb" />
+  </node>
+    <!-- After this launch file is run, publish messages to /topic1 and /topic2.  For instance, like this:
+            rostopic pub /topic1 std_msgs/String 'topic1'
+            rostopic pub /topic2 std_msgs/String 'topic2'
+         Then verify that these messages are both being echoed on the shared output topic:
+            rostopic echo /output_topic
+         Then kill everything (including ROS master), then rerun this launch file.  Without publishing any new messages
+         explicitly, verify that the previously-published messages are still available:
+            rostopic echo /topic1
+            rostopic echo /topic2
+            rostopic echo /output_topic
+    -->
+</launch>

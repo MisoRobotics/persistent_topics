@@ -67,19 +67,21 @@ class PersistentTopics:
                 if len(self.latched_messages[topic]) != content_length:
                     raise ValueError("Persistence file is corrupt; encountered end of file while reading content for topic %s from %s", topic, self.file_name)
 
-    def getPublisher(self, topic):
-        currentType = self.topic_type_names[topic]
-        publisherMissing = not topic in self.publishers
-        typeMismatch = False
-        if not publisherMissing:
-            typeMismatch = currentType != self.publishers[topic][1]
 
-        if publisherMissing or typeMismatch:
-            if typeMismatch:
-                rospy.logwarn("Recreating publisher due to type mismatch (%s previously, %s now).  This will cause one 'Could not process inbound connection' warning below.",
-                              self.publishers[topic][1], currentType)
-                self.publishers[topic][0].unregister()
-            topic_type = roslib.message.get_message_class(currentType)
-            self.publishers[topic] = (rospy.Publisher(topic, topic_type, latch=True, queue_size=1), currentType)
-            rospy.logdebug("Publisher of " + currentType + " on " + topic + " has been created")
-        return self.publishers[topic][0]
+class LatchPublisher(rospy.Publisher, rospy.SubscribeListener):
+    '''
+    Correctly implements multiple Publisher latches in a single node.
+    queue_size is shared between all publisher instances sharing a particular topic (because of underlying ROS infrastructure); be sure it's large enough
+    See https://github.com/ros/ros_comm/issues/146
+    '''
+    def __init__(self, name, data_class, tcp_nodelay=False, headers=None, queue_size=None):
+        super(LatchPublisher, self).__init__(name, data_class=data_class, tcp_nodelay=tcp_nodelay, headers=headers, queue_size=queue_size, subscriber_listener=self, latch=False)
+        self.message = None
+
+    def publish(self, msg):
+        self.message = msg
+        super(LatchPublisher, self).publish(msg)
+
+    def peer_subscribe(self, resolved_name, publish, publish_single):
+        if self.message is not None:
+            publish_single(self.message)
