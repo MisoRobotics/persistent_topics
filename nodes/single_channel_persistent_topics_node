@@ -37,6 +37,9 @@ class SingleChannelPersistentTopicsNode(PersistentTopics):
             if topic in self.topic_type_names:
                 topic_type_name = self.topic_type_names[topic]
                 topic_type = roslib.message.get_message_class(topic_type_name)
+                if topic_type is None:
+                    rospy.logerr("Unable to construct stored message type '%s'" % topic_type_name)
+                    continue
                 msg = topic_type()
                 msg.deserialize(self.latched_messages[topic])
                 publisher = self.getPublisher(topic)
