@@ -39,12 +39,12 @@ class SingleChannelPersistentTopicsNode(PersistentTopics):
                 topic_type = roslib.message.get_message_class(topic_type_name)
                 if topic_type is None:
                     rospy.logerr("Unable to construct stored message type '%s'" % topic_type_name)
-                    continue
-                msg = topic_type()
-                msg.deserialize(self.latched_messages[topic])
-                publisher = self.getPublisher(topic)
-                rospy.loginfo("Publishing initial %s message to %s", topic_type_name, topic)
-                publisher.publish(msg)
+                else:
+                    msg = topic_type()
+                    msg.deserialize(self.latched_messages[topic])
+                    publisher = self.getPublisher(topic)
+                    rospy.loginfo("Publishing initial %s message to %s", topic_type_name, topic)
+                    publisher.publish(msg)
 
             # Start listening for updates on the topic
             self.subscribers[topic] = rospy.Subscriber(topic, rospy.msg.AnyMsg,
