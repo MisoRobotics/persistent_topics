@@ -2,8 +2,8 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.0 (2018-06-13)
+------------------
 * Fixed fix for unconstructable stored message types
 * Added explicit check for stored types that are no longer built
 * Fixed incorrect multi-channel node behavior
