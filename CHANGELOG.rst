@@ -2,8 +2,8 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.1.0 (2022-01-12)
+------------------
 * RAD-79: Migrate to Python 3
   Update to work with Python 3 and Noetic.
 * Merge pull request `#3 <https://github.com/MisoRobotics/persistent_topics/issues/3>`_ from MisoRobotics/master
