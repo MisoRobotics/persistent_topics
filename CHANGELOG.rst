@@ -2,6 +2,16 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.1.0 (2022-01-12)
+------------------
+* RAD-79: Migrate to Python 3
+  Update to work with Python 3 and Noetic.
+* Merge pull request `#3 <https://github.com/MisoRobotics/persistent_topics/issues/3>`_ from MisoRobotics/master
+  Merge master back into develop
+* Merge pull request `#1 <https://github.com/MisoRobotics/persistent_topics/issues/1>`_ from MisoRobotics/release/1.0.0
+  Release/1.0.0
+* Contributors: Nikita Kosolobov, Ryan Sinnet
+
 1.0.0 (2018-06-13)
 ------------------
 * Fixed fix for unconstructable stored message types
