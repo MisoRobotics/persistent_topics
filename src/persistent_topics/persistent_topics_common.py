@@ -1,9 +1,9 @@
+import six
 import struct
 import sys
 import os
 
 import rospy
-import roslib.message
 
 from abc import ABCMeta
 
@@ -18,6 +18,8 @@ def readString(f):
     result = ''
     while True:
         c = f.read(1)
+        if not six.PY2:
+            c = c.decode("utf-8")
         if len(c) == 0:
             raise ValueError("Error reading file; encountered end of file instead of NULL string terminator")
         if c[0] == '\0':
@@ -27,6 +29,11 @@ def readString(f):
 
 class PersistentTopics:
     __metaclass__ = ABCMeta
+
+    def __init__(self, file_name=None):
+        self.topic_type_names = dict()
+        self.latched_messages = dict()
+        self.file_name = file_name
 
     def initFile(self):
         if not rospy.has_param("~file_name"):
@@ -42,13 +49,18 @@ class PersistentTopics:
             if not os.path.exists(file_path) and len(file_path) > 0:
                 os.makedirs(file_path)
 
-    def writeToFile(self):
-        with open(self.file_name, "w") as f:
+    def writeToFile(self, file_name=None):
+        with open(file_name or self.file_name, "wb") as f:
             f.write(struct.pack('I', len(self.latched_messages)))
+            def _write_utf8(msg):
+                if not six.PY2:
+                    msg = msg.encode("utf-8")
+                f.write(msg)
+
             for topic in self.latched_messages:
-                f.write(topic)
+                _write_utf8(topic)
                 f.write(as_byte(0))
-                f.write(self.topic_type_names[topic])
+                _write_utf8(self.topic_type_names[topic])
                 f.write(as_byte(0))
                 content = self.latched_messages[topic]
                 f.write(struct.pack('I', len(content)))
@@ -57,7 +69,7 @@ class PersistentTopics:
     def readFromFile(self):
         self.topic_type_names = dict()
         self.latched_messages = dict()
-        with open(self.file_name, "r") as f:
+        with open(self.file_name, "rb") as f:
             nTopics = struct.unpack('I', f.read(4))[0]
             for i in range(nTopics):
                 topic = readString(f)
