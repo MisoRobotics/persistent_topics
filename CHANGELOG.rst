@@ -2,8 +2,8 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.1.1 (2022-03-03)
+------------------
 * Merge pull request `#6 <https://github.com/MisoRobotics/persistent_topics/issues/6>`_ from MisoRobotics/user/rsinnet/py3-compat
   Fix python3 compatibility
 * Fix python3 compatibility
