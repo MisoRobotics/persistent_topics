@@ -2,6 +2,16 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.1.1 (2022-03-03)
+------------------
+* Merge pull request `#6 <https://github.com/MisoRobotics/persistent_topics/issues/6>`_ from MisoRobotics/user/rsinnet/py3-compat
+  Fix python3 compatibility
+* Fix python3 compatibility
+  Use six compatibility library and handle bytes properly.
+* Merge pull request `#5 <https://github.com/MisoRobotics/persistent_topics/issues/5>`_ from MisoRobotics/master
+  Backmerge master into develop for chippy-1.1.0
+* Contributors: Ryan Sinnet, Zach Zweig Vinegar
+
 1.1.0 (2022-01-12)
 ------------------
 * RAD-79: Migrate to Python 3
