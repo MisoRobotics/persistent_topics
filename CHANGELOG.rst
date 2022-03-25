@@ -2,8 +2,8 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.1.2 (2022-03-25)
+------------------
 * Merge remote-tracking branch 'origin/master' into develop
 * Merge branch 'user/rsinnet/RAD-171' into develop
 * RAD-171: Add labeling workflow
