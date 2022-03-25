@@ -2,6 +2,14 @@
 Changelog for package persistent_topics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Merge remote-tracking branch 'origin/master' into develop
+* Merge branch 'user/rsinnet/RAD-171' into develop
+* RAD-171: Add labeling workflow
+  Add a labeling workflow to apply the `flippy` label.
+* Contributors: Ryan Sinnet, Zach Zweig Vinegar
+
 1.1.1 (2022-03-03)
 ------------------
 * Merge pull request `#6 <https://github.com/MisoRobotics/persistent_topics/issues/6>`_ from MisoRobotics/user/rsinnet/py3-compat
